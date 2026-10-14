@@ -1,0 +1,38 @@
+# Servidor de embeddings (TEI) para Coolify
+# Importar como "Docker Compose from a Git repository".
+# Coolify gestiona la red y el enrutado: no añadir etiquetas de Traefik aquí.
+#
+# TEI (Text Embeddings Inference) sirve el modelo de embeddings por HTTP. Es la
+# pieza que convierte texto en vectores para el RAG.
+#
+# AVISO DE ARQUITECTURA: la imagen CPU de TEI se publica SOLO para linux/amd64
+# (x86_64). En un VPS Hostinger/Intel/AMD va nativo. En un servidor ARM (por
+# ejemplo Oracle Ampere) NO arranca. Ver el README, sección "Arquitectura".
+services:
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4
+    restart: unless-stopped
+    # --pooling mean es obligatorio para los modelos E5: con el valor por defecto
+    # (cls) los vectores salen mal y la búsqueda semántica empeora.
+    command:
+      - "--model-id"
+      - "${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}"
+      - "--port"
+      - "80"
+      - "--pooling"
+      - "mean"
+    environment:
+      # El modelo se descarga al arrancar y se cachea en el volumen.
+      HF_HOME: /data
+    volumes:
+      - embeddings-data:/data
+    healthcheck:
+      # La imagen trae curl, pero no wget.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:80/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+volumes:
+  embeddings-data:
